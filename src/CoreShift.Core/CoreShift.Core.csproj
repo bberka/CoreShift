@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    CoreShift.Core — the engine.
+    UI-free class library: Win32 interop, CPU topology, affinity/EcoQoS/priority management,
+    config persistence. Everything here is Native AOT / trimming compatible so the app can
+    publish fully ahead-of-time compiled.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>CoreShift</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <Description>CoreShift engine: Win32 interop, CPU topology, affinity/EcoQoS/priority management, config persistence.</Description>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.*" />
+  </ItemGroup>
+
+  <!-- The WinForms app (assembly "CoreShift") needs the interop surface and JSON context. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="CoreShift" />
+  </ItemGroup>
+
+</Project>

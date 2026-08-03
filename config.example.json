@@ -1,0 +1,23 @@
+{
+  "Version": 1,
+  "Targets": [
+    {
+      "Name": "game.exe",
+      "Path": "C:\\Games\\game.exe",
+      "Affinity": "PCoresOnly",
+      "EcoQoS": false,
+      "HighPriority": true,
+      "DemoteInBackground": false
+    },
+    {
+      "Name": "chrome.exe",
+      "Path": null,
+      "Affinity": "None",
+      "EcoQoS": false,
+      "HighPriority": false,
+      "DemoteInBackground": true
+    }
+  ],
+  "BackgroundEcoQoS": true,
+  "BackgroundECores": true
+}

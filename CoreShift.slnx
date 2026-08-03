@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CoreShift.App/CoreShift.App.csproj" />
+    <Project Path="src/CoreShift.Core/CoreShift.Core.csproj" />
+  </Folder>
+</Solution>

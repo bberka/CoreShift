@@ -1,0 +1,30 @@
+## .NET build artifacts
+bin/
+obj/
+artifacts/
+*.binlog
+
+## Publish output (also contains the runtime-generated config.json and logs/)
+publish/
+out/
+
+## Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Rider / other IDEs
+.idea/
+*.sln.iml
+
+## OS noise
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+## Runtime artifacts (machine-specific — never commit)
+config.json
+logs/
+*.log
