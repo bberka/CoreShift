@@ -113,22 +113,25 @@ public sealed class CoreManager : IDisposable
         }
     }
 
-    private static Dictionary<int, Adjustment> ComputeDesired(AppConfig cfg, bool forceAll)
+    private Dictionary<int, Adjustment> ComputeDesired(AppConfig cfg, bool forceAll)
     {
         var desired = new Dictionary<int, Adjustment>();
         var targets = (cfg.Targets ?? new List<Target>())
             .Where(t => !string.IsNullOrWhiteSpace(t.Name)).ToList();
-        if (targets.Count == 0) return desired;
 
         // Foreground context. "gameActive" means a tuned target owns the foreground, which
         // is the only situation where background demotion is supposed to engage.
         string? fgName = null;
         Target? fgTarget = null;
         bool gameActive = forceAll;
+        IntPtr fgHwnd = IntPtr.Zero;
+        uint fgPid = 0;
 
         if (!forceAll)
         {
-            fgName = TryGetProcessName(NativeMethods.GetForegroundPid());
+            fgHwnd = NativeMethods.GetForegroundWindow();
+            NativeMethods.GetWindowThreadProcessId(fgHwnd, out fgPid);
+            fgName = fgPid == 0 ? null : TryGetProcessName(fgPid);
             fgTarget = fgName is null ? null : targets.FirstOrDefault(t => t.Matches(fgName));
             gameActive = fgTarget is { HasTuning: true };
         }
@@ -176,7 +179,33 @@ public sealed class CoreManager : IDisposable
                 }
             }
         }
+        // Global auto game detection: an untargeted fullscreen foreground app gets P-cores.
+        if (cfg.AutoDetectGames && !forceAll && fgPid != 0 && fgName is not null)
+        {
+            bool isTarget = fgTarget is not null;
+            if (!isTarget && !IsProtectedProcess((int)fgPid, fgName) && IsFullscreenWindow(fgHwnd))
+            {
+                desired[(int)fgPid] = new Adjustment(false, CpuTopology.PCoreMask, null, null);
+                _logger.LogDebug("Auto-detect: {Name} (pid {Pid}) is fullscreen -> P-cores", fgName, fgPid);
+            }
+        }
+
         return desired;
+    }
+
+    /// <summary>True when the window covers its monitor — the classic borderless fullscreen shape.</summary>
+    private static bool IsFullscreenWindow(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return false;
+        if (!NativeMethods.GetWindowRect(hwnd, out var wr)) return false;
+
+        var monitor = NativeMethods.MonitorFromWindow(hwnd, NativeMethods.MONITOR_DEFAULTTONEAREST);
+        var mi = new NativeMethods.MONITORINFO { cbSize = (uint)Marshal.SizeOf<NativeMethods.MONITORINFO>() };
+        if (!NativeMethods.GetMonitorInfo(monitor, ref mi)) return false;
+
+        int w = wr.Right - wr.Left, h = wr.Bottom - wr.Top;
+        int mw = mi.rcMonitor.Right - mi.rcMonitor.Left, mh = mi.rcMonitor.Bottom - mi.rcMonitor.Top;
+        return Math.Abs(w - mw) <= 4 && Math.Abs(h - mh) <= 4;
     }
 
     private static Dictionary<string, List<Process>> IndexRunningProcesses()

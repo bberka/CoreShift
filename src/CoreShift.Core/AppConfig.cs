@@ -37,6 +37,12 @@ public sealed class AppConfig
     public List<Target>? Targets { get; set; } = new();
     public bool BackgroundEcoQoS { get; set; } = true;   // global: demoted apps get EcoQoS
     public bool BackgroundECores { get; set; } = true;   // global: demoted apps pinned to E-cores
+
+    /// <summary>
+    /// Global: when the foreground window is fullscreen and its process is not a configured
+    /// target, redirect it to P-cores automatically (heuristic game detection).
+    /// </summary>
+    public bool AutoDetectGames { get; set; } = true;
 }
 
 /// <summary>Normalization used everywhere for process-name matching.</summary>

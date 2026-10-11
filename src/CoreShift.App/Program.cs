@@ -2,7 +2,6 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Microsoft.Win32;
 using Serilog;
 using ILogger = Microsoft.Extensions.Logging.ILogger; // disambiguate from Serilog.ILogger
 using CoreShift;
@@ -145,16 +144,37 @@ internal static class Program
             var cfg = new AppConfig();
             cfg.Targets!.Add(new Target { Name = "game.exe", Affinity = AffinityMode.PCoresOnly, HighPriority = true });
             cfg.BackgroundECores = true;
+            cfg.AutoDetectGames = true;
             var tmp = Path.Combine(Path.GetTempPath(), $"coreshift_selftest_{Guid.NewGuid():N}.json");
             var copy = JsonSerializer.Serialize(cfg, AppConfigJsonContext.Default.AppConfig);
             File.WriteAllText(tmp, copy);
             var back = JsonSerializer.Deserialize(File.ReadAllText(tmp), AppConfigJsonContext.Default.AppConfig);
             File.Delete(tmp);
-            bool ok = back is not null && back.Targets is { Count: 1 } && back.Targets[0].Affinity == AffinityMode.PCoresOnly;
+            bool ok = back is not null && back.Targets is { Count: 1 } && back.Targets[0].Affinity == AffinityMode.PCoresOnly && back.AutoDetectGames;
             Console.WriteLine($"  Config JSON round-trip: {(ok ? "OK" : "FAIL")}");
             if (!ok) failures++;
         }
         catch (Exception ex) { Console.WriteLine($"FAIL: config round-trip: {ex.Message}"); failures++; }
+
+        // 5) Fullscreen detection smoke test — the same Win32 calls the auto game detection uses.
+        try
+        {
+            IntPtr fg = NativeMethods.GetForegroundWindow();
+            if (fg != IntPtr.Zero && NativeMethods.GetWindowRect(fg, out var rect))
+            {
+                var mon = NativeMethods.MonitorFromWindow(fg, NativeMethods.MONITOR_DEFAULTTONEAREST);
+                var mi = new NativeMethods.MONITORINFO { cbSize = (uint)Marshal.SizeOf<NativeMethods.MONITORINFO>() };
+                if (NativeMethods.GetMonitorInfo(mon, ref mi))
+                {
+                    bool fs = Math.Abs((rect.Right - rect.Left) - (mi.rcMonitor.Right - mi.rcMonitor.Left)) <= 4 &&
+                               Math.Abs((rect.Bottom - rect.Top) - (mi.rcMonitor.Bottom - mi.rcMonitor.Top)) <= 4;
+                    Console.WriteLine($"  Foreground fullscreen detection: {(fs ? "fullscreen" : "windowed")} (OK)");
+                }
+                else { Console.WriteLine("FAIL: GetMonitorInfo"); failures++; }
+            }
+            else { Console.WriteLine("FAIL: GetWindowRect / no foreground window"); failures++; }
+        }
+        catch (Exception ex) { Console.WriteLine($"FAIL: fullscreen detection: {ex.Message}"); failures++; }
 
         Console.WriteLine(failures == 0 ? "SELFTEST PASSED" : $"SELFTEST FAILED ({failures} failure(s))");
         Environment.ExitCode = failures == 0 ? 0 : 1;
@@ -167,9 +187,6 @@ internal static class Program
 /// </summary>
 internal sealed class TrayApplicationContext : ApplicationContext
 {
-    private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string RunValueName = "CoreShift";
-
     private readonly NotifyIcon _tray;
     private readonly ForegroundWatcher _watcher;
     private readonly AppConfig _config;
@@ -192,7 +209,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _tray = new NotifyIcon
         {
             Icon = IconFactory.AppIcon,
-            Text = "CoreShift — CPU core & power manager",
+            Text = "CoreShift",
             Visible = true,
             ContextMenuStrip = BuildMenu(),
         };
@@ -220,21 +237,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var open = new ToolStripMenuItem("Open Dashboard") { ForeColor = Palette.Text };
         open.Click += (_, _) => ShowDashboard();
 
-        var autoStart = new ToolStripMenuItem("Start with Windows") { ForeColor = Palette.Text, Checked = IsAutoStartEnabled() };
-        autoStart.Click += (_, _) =>
-        {
-            bool on = !IsAutoStartEnabled();
-            SetAutoStartEnabled(on);
-            autoStart.Checked = on;
-            _logger.LogInformation("Auto-start {State}", on ? "enabled" : "disabled");
-        };
-
         var exit = new ToolStripMenuItem("Exit") { ForeColor = Palette.Text };
         exit.Click += (_, _) => Exit();
 
         menu.Items.Add(open);
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(autoStart);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(exit);
         return menu;
@@ -270,26 +276,5 @@ internal sealed class TrayApplicationContext : ApplicationContext
         ExitThread();
     }
 
-    // ------------------------------------------------------------------ auto-start (registry)
-
-    private static bool IsAutoStartEnabled()
-    {
-        using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: false);
-        return key?.GetValue(RunValueName) is string;
-    }
-
-    private static void SetAutoStartEnabled(bool enable)
-    {
-        using var key = Registry.CurrentUser.CreateSubKey(RunKeyPath);
-        if (key is null) return;
-        if (enable)
-        {
-            var path = Environment.ProcessPath;
-            if (!string.IsNullOrEmpty(path)) key.SetValue(RunValueName, $"\"{path}\" --autostart");
-        }
-        else
-        {
-            key.DeleteValue(RunValueName, throwOnMissingValue: false);
-        }
-    }
+    // ------------------------------------------------------------------ auto-start lives on the dashboard (AutoStart.cs)
 }
